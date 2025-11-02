@@ -2,4 +2,4 @@ zerops:
   - setup: storageproxy
     run:
       base: nginx@1.22
-      siteConfigPath: site.conf.tmpl
+      #siteConfigPath: site.conf.tmpl
