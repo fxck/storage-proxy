@@ -1,67 +1,47 @@
+# Cache control mapping
+map $uri $cache_control {
+    ~*\.(jpg|jpeg|png|gif|ico|webp|svg|avif|woff|woff2|ttf|otf|eot)$ "public, max-age=31536000, immutable";
+    ~*\.[a-f0-9]{8,}\.(css|js)$ "public, max-age=31536000, immutable";
+    ~*\.(css|js)$ "public, max-age=3600, must-revalidate";
+    ~*\.(html|htm)$ "no-cache, no-store, must-revalidate";
+    default "public, max-age=86400";
+}
+
+# CORS mapping (fonts and images need it)
+map $uri $cors_header {
+    ~*\.(woff|woff2|ttf|otf|eot|jpg|jpeg|png|gif|ico|webp|svg|avif)$ "*";
+    default "";
+}
+
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
-
+    
     server_name _;
-
-    # Proxy to MinIO
+    
+    # Shared proxy configuration
+    proxy_pass https://storage-prg1.zerops.io;
+    proxy_set_header Host storage-prg1.zerops.io;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    
+    proxy_hide_header x-amz-request-id;
+    proxy_hide_header x-amz-id-2;
+    proxy_pass_header ETag;
+    
+    proxy_connect_timeout 60s;
+    proxy_send_timeout 60s;
+    proxy_read_timeout 60s;
+    
+    # Apply cache control and CORS to all responses
+    add_header Cache-Control $cache_control;
+    add_header Access-Control-Allow-Origin $cors_header;
+    
     location / {
-        proxy_pass https://storage-prg1.zerops.io;
-        proxy_set_header Host storage-prg1.zerops.io;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        
-        proxy_hide_header x-amz-request-id;
-        proxy_hide_header x-amz-id-2;
-        proxy_pass_header ETag;
-        
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
-        
-        # Images - long cache (1 year)
-        location ~* \.(jpg|jpeg|png|gif|ico|webp|svg|avif)$ {
-            proxy_pass https://storage-prg1.zerops.io;
-            proxy_set_header Host storage-prg1.zerops.io;
-            add_header Cache-Control "public, max-age=31536000, immutable";
-            add_header Access-Control-Allow-Origin "*";
-        }
-        
-        # Fonts - long cache (1 year)
-        location ~* \.(woff|woff2|ttf|otf|eot)$ {
-            proxy_pass https://storage-prg1.zerops.io;
-            proxy_set_header Host storage-prg1.zerops.io;
-            add_header Cache-Control "public, max-age=31536000, immutable";
-            add_header Access-Control-Allow-Origin "*";
-        }
-        
-        # CSS/JS with hash in filename - long cache
-        location ~* \.[a-f0-9]{8,}\.(css|js)$ {
-            proxy_pass https://storage-prg1.zerops.io;
-            proxy_set_header Host storage-prg1.zerops.io;
-            add_header Cache-Control "public, max-age=31536000, immutable";
-        }
-        
-        # CSS/JS without hash - short cache
-        location ~* \.(css|js)$ {
-            proxy_pass https://storage-prg1.zerops.io;
-            proxy_set_header Host storage-prg1.zerops.io;
-            add_header Cache-Control "public, max-age=3600, must-revalidate";
-        }
-        
-        # HTML - no cache
-        location ~* \.(html|htm)$ {
-            proxy_pass https://storage-prg1.zerops.io;
-            proxy_set_header Host storage-prg1.zerops.io;
-            add_header Cache-Control "no-cache, no-store, must-revalidate";
-        }
-        
-        # Default - moderate cache
-        add_header Cache-Control "public, max-age=86400";
-        add_header Access-Control-Allow-Origin "*";
+        # All proxy settings inherited from server block
     }
-
+    
     access_log syslog:server=unix:/dev/log,facility=local1,tag=nginx,severity=info default_short;
     error_log syslog:server=unix:/dev/log,facility=local1,tag=nginx,severity=error;
 }
